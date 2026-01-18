@@ -12,6 +12,7 @@ import subprocess
 import base64
 import json
 import smtplib
+import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
@@ -75,30 +76,42 @@ if not os.path.exists(UPLOAD_FOLDER):
 # -----------------------------
 # MongoDB Setup (Contacts + Users)
 # -----------------------------
-import ssl
 MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/')
+client = None
+
 try:
-    # Create SSL context that ignores certificate verification
-    ssl_context = ssl.create_default_context()
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
+    # Try with SSL context that ignores certificate verification
+    try:
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        client = MongoClient(
+            MONGODB_URI,
+            serverSelectionTimeoutMS=10000,
+            connectTimeoutMS=10000,
+            socketTimeoutMS=10000,
+            retryWrites=False,
+            maxPoolSize=1,
+            ssl_context=ssl_context
+        )
+    except:
+        # Fallback: try without SSL context
+        client = MongoClient(
+            MONGODB_URI,
+            serverSelectionTimeoutMS=10000,
+            connectTimeoutMS=10000,
+            socketTimeoutMS=10000,
+            retryWrites=False,
+            maxPoolSize=1
+        )
     
-    client = MongoClient(
-        MONGODB_URI,
-        serverSelectionTimeoutMS=10000,
-        connectTimeoutMS=10000,
-        socketTimeoutMS=10000,
-        retryWrites=False,
-        maxPoolSize=1,
-        ssl_context=ssl_context
-    )
     # Test connection
     client.admin.command('ping')
     print("✅ MongoDB connected successfully")
 except Exception as e:
     print(f"⚠️ MongoDB connection warning: {e}")
-    # Continue without connection - graceful degradation
-    client = None
+    client = None  # Graceful degradation
 
 db = client.fall if client else None
 contacts_collection = db.contacts if db else None
