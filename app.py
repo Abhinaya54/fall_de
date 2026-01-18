@@ -75,8 +75,14 @@ if not os.path.exists(UPLOAD_FOLDER):
 # -----------------------------
 # MongoDB Setup (Contacts + Users)
 # -----------------------------
+import ssl
 MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/')
 try:
+    # Create SSL context that ignores certificate verification
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+    
     client = MongoClient(
         MONGODB_URI,
         serverSelectionTimeoutMS=10000,
@@ -84,9 +90,7 @@ try:
         socketTimeoutMS=10000,
         retryWrites=False,
         maxPoolSize=1,
-        ssl=True,
-        tlsAllowInvalidCertificates=True,
-        tlsAllowInvalidHostnames=True
+        ssl_context=ssl_context
     )
     # Test connection
     client.admin.command('ping')
