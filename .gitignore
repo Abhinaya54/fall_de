@@ -76,3 +76,4 @@ htmlcov/
 
 # Node modules (if any frontend build tools)
 node_modules/
+.vercel
