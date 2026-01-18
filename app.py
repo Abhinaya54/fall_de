@@ -681,7 +681,18 @@ def _process_video_background(save_path, filename, user_email, quick_mode):
                 timestamp = str(datetime.utcfromtimestamp(frame_idx / fps).strftime("%H:%M:%S"))
                 # Reduce resolution for faster inference (320x480 instead of 384x640)
                 small_frame = cv2.resize(frame, (320, 480), interpolation=cv2.INTER_LINEAR)
+                # Time the model inference to gather performance data
+                t0 = time.time()
                 results = detector.model(small_frame, conf=0.5)
+                t1 = time.time()
+                inference_ms = (t1 - t0) * 1000.0
+                print(f"INF ✓ Frame {frame_idx}: inference {inference_ms/1000.0:.3f}s ({inference_ms:.1f}ms)")
+                # Expose last inference time to the processing state for SSE/monitoring
+                try:
+                    with processing_lock:
+                        processing_state['last_inference_ms'] = inference_ms
+                except Exception:
+                    pass
                 
                 person_detected = False
                 fall_detected = False
