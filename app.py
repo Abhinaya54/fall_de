@@ -75,7 +75,8 @@ if not os.path.exists(UPLOAD_FOLDER):
 # -----------------------------
 # MongoDB Setup (Contacts + Users)
 # -----------------------------
-client = MongoClient("mongodb://localhost:27017/")
+MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/')
+client = MongoClient(MONGODB_URI)
 db = client.fall
 contacts_collection = db.contacts
 users_collection = db.users  # New collection for signup/login
