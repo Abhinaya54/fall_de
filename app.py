@@ -664,18 +664,23 @@ def _process_video_background(save_path, filename, user_email, quick_mode):
                 use_original_video = True
                 print("⚠️ Could not initialize video writer, will use original video")
         
-        # Process frames
+        # Process frames - OPTIMIZED for speed
         frame_idx = 0
         fall_frames = set()
         in_fall_state = False
         fall_cooldown_frames = 0
         frame_base64 = None
+        FRAME_SKIP = 2  # Process every 2nd frame (2x faster)
         
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
             frame_idx += 1
+            
+            # Skip frames for speed optimization
+            if frame_idx % FRAME_SKIP != 0:
+                continue
             
             try:
                 timestamp = str(datetime.utcfromtimestamp(frame_idx / fps).strftime("%H:%M:%S"))
@@ -748,8 +753,11 @@ def _process_video_background(save_path, filename, user_email, quick_mode):
                     processing_state['message'] = f"Error at frame {frame_idx}: {str(frame_error)[:100]}"
                 continue
 
-            # Annotate frame if not in quick mode
-            if not quick_mode and out and out.isOpened():
+            # Annotate frame if not in quick mode - SKIP for speed on cloud
+            # Only sample frames for annotation (1 every 10 frames in quick mode)
+            should_annotate = (not quick_mode and out and out.isOpened() and (frame_idx % 10 == 0))
+            
+            if should_annotate:
                 annotated_frame = frame.copy()
                 for info in results:
                     for box in info.boxes:
@@ -770,9 +778,10 @@ def _process_video_background(save_path, filename, user_email, quick_mode):
                 cv2.putText(annotated_frame, f"Time: {timestamp}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                 cv2.putText(annotated_frame, f"People: {frame_person_count}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                 out.write(annotated_frame)
+                del annotated_frame  # Free memory
                 
                 # Encode frame for streaming
-                _, buffer = cv2.imencode('.jpg', cv2.resize(annotated_frame, (640, 480)))
+                _, buffer = cv2.imencode('.jpg', cv2.resize(frame, (640, 480)))
                 frame_base64 = base64.b64encode(buffer).decode('utf-8')
             else:
                 # Quick mode: encode original frame with detection boxes
@@ -848,6 +857,11 @@ def _process_video_background(save_path, filename, user_email, quick_mode):
         cap.release()
         if out:
             out.release()
+        
+        # Clean up memory
+        import gc
+        del cap, out, results, detected_confidences, frame
+        gc.collect()
         
         # Mark complete
         with processing_lock:
