@@ -1,0 +1,16 @@
+myvenv
+venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env
+.git
+.gitignore
+.vercel
+.vscode
+.idea
+uploads/*.mp4
+uploads/*.avi
+node_modules
