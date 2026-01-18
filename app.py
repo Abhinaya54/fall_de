@@ -179,11 +179,18 @@ def send_fall_alert_email(recipient_name, recipient_email, user_email=None):
         
         msg.attach(MIMEText(body, 'html'))
         
-        # Send email via Gmail SMTP
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()
-            server.login(GMAIL_SENDER, GMAIL_APP_PASSWORD)
-            server.send_message(msg)
+        # Send email via Gmail SMTP (try port 465 first, fallback to 587)
+        try:
+            # Try SSL on port 465
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as server:
+                server.login(GMAIL_SENDER, GMAIL_APP_PASSWORD)
+                server.send_message(msg)
+        except:
+            # Fallback to TLS on port 587
+            with smtplib.SMTP('smtp.gmail.com', 587, timeout=10) as server:
+                server.starttls()
+                server.login(GMAIL_SENDER, GMAIL_APP_PASSWORD)
+                server.send_message(msg)
         
         print(f"✅ Email sent to {recipient_name} ({recipient_email})")
         return True
@@ -918,10 +925,15 @@ def live():
 @login_required
 def stream_live():
     user_email = session.get('user')
-    return Response(
-        detector.camera_frame_generator(0, callback=lambda event_type, info: fall_callback(event_type, info, user_email=user_email)),
-        mimetype='multipart/x-mixed-replace; boundary=frame'
-    )
+    try:
+        return Response(
+            detector.camera_frame_generator(0, callback=lambda event_type, info: fall_callback(event_type, info, user_email=user_email)),
+            mimetype='multipart/x-mixed-replace; boundary=frame'
+        )
+    except Exception as e:
+        print(f"❌ Webcam error: {e}")
+        # Return error frame
+        return jsonify({"error": "Webcam not available. This feature requires a connected camera."}), 400
 
 # --- Analytics ---
 @app.route('/analytics')
