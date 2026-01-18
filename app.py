@@ -631,38 +631,39 @@ def _process_video_background(save_path, filename, user_email, quick_mode):
                 break
             frame_idx += 1
             
-            timestamp = str(datetime.utcfromtimestamp(frame_idx / fps).strftime("%H:%M:%S"))
-            results = detector.model(frame)
-            
-            person_detected = False
-            fall_detected = False
-            frame_person_count = 0
-            detected_confidences = []
-            
-            for info in results:
-                for box in info.boxes:
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    confidence = float(box.conf[0])
-                    class_id = int(box.cls[0])
-                    class_name = detector.classnames[class_id]
-                    
-                    if class_name != "person" or confidence < 0.80:
-                        continue
-                    
-                    frame_person_count += 1
-                    person_detected = True
-                    detected_confidences.append(confidence)
-                    
-                    # Calculate aspect ratio for fall detection
-                    width_box = x2 - x1
-                    height_box = y2 - y1
-                    aspect = width_box / (height_box + 1e-6)
-                    
-                    # Fall detection logic
-                    lying_orientation = aspect > 1.20
-                    
-                    if lying_orientation and not in_fall_state:
-                        fall_detected = True
+            try:
+                timestamp = str(datetime.utcfromtimestamp(frame_idx / fps).strftime("%H:%M:%S"))
+                results = detector.model(frame)
+                
+                person_detected = False
+                fall_detected = False
+                frame_person_count = 0
+                detected_confidences = []
+                
+                for info in results:
+                    for box in info.boxes:
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        confidence = float(box.conf[0])
+                        class_id = int(box.cls[0])
+                        class_name = detector.classnames[class_id]
+                        
+                        if class_name != "person" or confidence < 0.80:
+                            continue
+                        
+                        frame_person_count += 1
+                        person_detected = True
+                        detected_confidences.append(confidence)
+                        
+                        # Calculate aspect ratio for fall detection
+                        width_box = x2 - x1
+                        height_box = y2 - y1
+                        aspect = width_box / (height_box + 1e-6)
+                        
+                        # Fall detection logic
+                        lying_orientation = aspect > 1.20
+                        
+                        if lying_orientation and not in_fall_state:
+                            fall_detected = True
                         in_fall_state = True
                         fall_cooldown_frames = 0
                     elif lying_orientation and in_fall_state:
@@ -790,6 +791,13 @@ def _process_video_background(save_path, filename, user_email, quick_mode):
             
             activity_counts["Near-Fall"].append(0)
             activity_counts["Sitting"].append(0)
+            
+            except Exception as frame_error:
+                print(f"❌ Error processing frame {frame_idx}: {frame_error}")
+                with processing_lock:
+                    processing_state['message'] = f"Error at frame {frame_idx}: {str(frame_error)[:100]}"
+                # Continue with next frame instead of crashing
+                continue
         
         cap.release()
         if out:
@@ -830,7 +838,9 @@ def _process_video_background(save_path, filename, user_email, quick_mode):
         print(f"✅ Done: {total_falls} falls, {duration:.1f}s video")
         
     except Exception as e:
+        import traceback
         print(f"❌ Error: {e}")
+        print(traceback.format_exc())
         with processing_lock:
             processing_state['active'] = False
             processing_state['message'] = f'Error: {str(e)}'
