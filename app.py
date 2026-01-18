@@ -82,12 +82,22 @@ client = MongoClient(
     connectTimeoutMS=10000,
     socketTimeoutMS=10000,
     retryWrites=False,
-    maxPoolSize=1
+    maxPoolSize=1,
+    tls=True,
+    tlsAllowInvalidCertificates=True  # For Render's environment SSL issues
 )
 db = client.fall
 contacts_collection = db.contacts
 users_collection = db.users  # New collection for signup/login
 fall_events_collection = db.fall_events  # New collection for fall events per user
+
+def safe_mongo_query(query_func):
+    """Wrapper to safely execute MongoDB queries with fallback"""
+    try:
+        return query_func()
+    except Exception as e:
+        print(f"MongoDB query error: {e}")
+        return None
 
 # -----------------------------
 # Gmail Setup for Email Alerts
@@ -248,17 +258,24 @@ def signup():
             flash("Passwords do not match.", "error")
             return redirect(url_for('signup'))
 
-        if users_collection.find_one({"email": email}):
-            flash("Email already registered.", "error")
-            return redirect(url_for('signup'))
+        try:
+            # Check if email exists
+            existing_user = safe_mongo_query(lambda: users_collection.find_one({"email": email}))
+            if existing_user:
+                flash("Email already registered.", "error")
+                return redirect(url_for('signup'))
 
-        users_collection.insert_one({
-            "fullname": fullname,
-            "email": email,
-            "password": password
-        })
-        flash("Signup successful! Please login.", "success")
-        return redirect(url_for('login'))
+            # Insert new user
+            users_collection.insert_one({
+                "fullname": fullname,
+                "email": email,
+                "password": password
+            })
+            flash("Signup successful! Please login.", "success")
+            return redirect(url_for('login'))
+        except Exception as e:
+            flash(f"Database error: {str(e)}", "error")
+            return redirect(url_for('signup'))
 
     return render_template('signup.html')
 
@@ -269,13 +286,17 @@ def login():
         email = request.form.get('email')
         password = request.form.get('password')
 
-        user = users_collection.find_one({"email": email})
-        if user and user['password'] == password:
-            session.permanent = True
-            session['user'] = user['email']
-            return redirect(url_for('dashboard'))
-        else:
-            flash("Invalid email or password.", "error")
+        try:
+            user = safe_mongo_query(lambda: users_collection.find_one({"email": email}))
+            if user and user['password'] == password:
+                session.permanent = True
+                session['user'] = user['email']
+                return redirect(url_for('dashboard'))
+            else:
+                flash("Invalid email or password.", "error")
+                return redirect(url_for('login'))
+        except Exception as e:
+            flash(f"Database error: {str(e)}", "error")
             return redirect(url_for('login'))
 
     return render_template('login.html')
