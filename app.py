@@ -546,6 +546,11 @@ def _process_video_background(save_path, filename, user_email, quick_mode):
     """Process video in background thread"""
     global processing_state, processing_result, analytics_cache
     
+    print(f"🔄 [THREAD START] Processing: {filename}")
+    print(f"   Save path: {save_path}")
+    print(f"   Quick mode: {quick_mode}")
+    print(f"   User email: {user_email}")
+    
     annotated_filename = f"annotated_{filename.rsplit('.', 1)[0]}.mp4"
     annotated_path = os.path.join(app.config['UPLOAD_FOLDER'], annotated_filename)
     
@@ -753,6 +758,10 @@ def _process_video_background(save_path, filename, user_email, quick_mode):
                 processing_state['message'] = f"Frame {frame_idx}/{total_frames} - {timestamp}"
                 if frame_base64:
                     processing_state['current_image_base64'] = frame_base64
+            
+            # Log progress every 30 frames
+            if frame_idx % 30 == 0:
+                print(f"   ✓ Processed {frame_idx}/{total_frames} frames ({int((frame_idx/total_frames)*100)}%)")
             
             # Analytics for every frame
             time_labels.append(timestamp)
