@@ -664,38 +664,43 @@ def _process_video_background(save_path, filename, user_email, quick_mode):
                         
                         if lying_orientation and not in_fall_state:
                             fall_detected = True
-                        in_fall_state = True
-                        fall_cooldown_frames = 0
-                    elif lying_orientation and in_fall_state:
-                        fall_cooldown_frames += 1
-                        if fall_cooldown_frames > 25:
-                            fall_detected = True
+                            in_fall_state = True
                             fall_cooldown_frames = 0
-                    elif not lying_orientation:
-                        in_fall_state = False
-                        fall_cooldown_frames = 0
-                    
-                    if fall_detected:
-                        fall_frames.add(frame_idx)
-                        max_confidence = max(max_confidence, confidence)
-                        total_falls += 1
-                        events_list.append({
-                            "time": timestamp,
-                            "event": "Fall",
-                            "confidence": round(confidence, 2)
-                        })
-                        event = {
-                            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            'source': 'Upload',
-                            'confidence': confidence,
-                            'user_email': user_email
-                        }
-                        try:
-                            fall_events_collection.insert_one(event)
-                        except:
-                            pass
-                        print(f"   🚨 FALL at {timestamp} (Confidence: {confidence:.2f})")
-            
+                        elif lying_orientation and in_fall_state:
+                            fall_cooldown_frames += 1
+                            if fall_cooldown_frames > 25:
+                                fall_detected = True
+                                fall_cooldown_frames = 0
+                        elif not lying_orientation:
+                            in_fall_state = False
+                            fall_cooldown_frames = 0
+                        
+                        if fall_detected:
+                            fall_frames.add(frame_idx)
+                            max_confidence = max(max_confidence, confidence)
+                            total_falls += 1
+                            events_list.append({
+                                "time": timestamp,
+                                "event": "Fall",
+                                "confidence": round(confidence, 2)
+                            })
+                            event = {
+                                'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                'source': 'Upload',
+                                'confidence': confidence,
+                                'user_email': user_email
+                            }
+                            try:
+                                fall_events_collection.insert_one(event)
+                            except:
+                                pass
+                            print(f"   🚨 FALL at {timestamp} (Confidence: {confidence:.2f})")
+            except Exception as frame_error:
+                print(f"❌ Error processing frame {frame_idx}: {frame_error}")
+                with processing_lock:
+                    processing_state['message'] = f"Error at frame {frame_idx}: {str(frame_error)[:100]}"
+                continue
+
             # Annotate frame if not in quick mode
             if not quick_mode and out and out.isOpened():
                 annotated_frame = frame.copy()
@@ -792,12 +797,6 @@ def _process_video_background(save_path, filename, user_email, quick_mode):
             activity_counts["Near-Fall"].append(0)
             activity_counts["Sitting"].append(0)
             
-            except Exception as frame_error:
-                print(f"❌ Error processing frame {frame_idx}: {frame_error}")
-                with processing_lock:
-                    processing_state['message'] = f"Error at frame {frame_idx}: {str(frame_error)[:100]}"
-                # Continue with next frame instead of crashing
-                continue
         
         cap.release()
         if out:
