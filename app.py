@@ -76,23 +76,35 @@ if not os.path.exists(UPLOAD_FOLDER):
 # MongoDB Setup (Contacts + Users)
 # -----------------------------
 MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/')
-client = MongoClient(
-    MONGODB_URI,
-    serverSelectionTimeoutMS=10000,
-    connectTimeoutMS=10000,
-    socketTimeoutMS=10000,
-    retryWrites=False,
-    maxPoolSize=1,
-    tls=True,
-    tlsAllowInvalidCertificates=True  # For Render's environment SSL issues
-)
-db = client.fall
-contacts_collection = db.contacts
-users_collection = db.users  # New collection for signup/login
-fall_events_collection = db.fall_events  # New collection for fall events per user
+try:
+    client = MongoClient(
+        MONGODB_URI,
+        serverSelectionTimeoutMS=10000,
+        connectTimeoutMS=10000,
+        socketTimeoutMS=10000,
+        retryWrites=False,
+        maxPoolSize=1,
+        ssl=True,
+        tlsAllowInvalidCertificates=True,
+        tlsAllowInvalidHostnames=True
+    )
+    # Test connection
+    client.admin.command('ping')
+    print("✅ MongoDB connected successfully")
+except Exception as e:
+    print(f"⚠️ MongoDB connection warning: {e}")
+    # Continue without connection - graceful degradation
+    client = None
+
+db = client.fall if client else None
+contacts_collection = db.contacts if db else None
+users_collection = db.users if db else None
+fall_events_collection = db.fall_events if db else None
 
 def safe_mongo_query(query_func):
     """Wrapper to safely execute MongoDB queries with fallback"""
+    if not client:
+        return None
     try:
         return query_func()
     except Exception as e:
@@ -202,7 +214,7 @@ def fall_callback(event_type, info, user_email=None):
             fall_events_persistent.append(event)  # For analytics
         
         # Store in MongoDB for persistent user-specific storage
-        if user_email:
+        if user_email and fall_events_collection:
             try:
                 fall_events_collection.insert_one(event)
                 print(f"📊 Fall event stored for user: {user_email}")
@@ -259,6 +271,11 @@ def signup():
             return redirect(url_for('signup'))
 
         try:
+            # Check if MongoDB is available
+            if not users_collection:
+                flash("Database unavailable. Please try again later.", "error")
+                return redirect(url_for('signup'))
+            
             # Check if email exists
             existing_user = safe_mongo_query(lambda: users_collection.find_one({"email": email}))
             if existing_user:
@@ -287,6 +304,11 @@ def login():
         password = request.form.get('password')
 
         try:
+            # Check if MongoDB is available
+            if not users_collection:
+                flash("Database unavailable. Please try again later.", "error")
+                return redirect(url_for('login'))
+            
             user = safe_mongo_query(lambda: users_collection.find_one({"email": email}))
             if user and user['password'] == password:
                 session.permanent = True
@@ -691,7 +713,8 @@ def _process_video_background(save_path, filename, user_email, quick_mode):
                                 'user_email': user_email
                             }
                             try:
-                                fall_events_collection.insert_one(event)
+                                if fall_events_collection:
+                                    fall_events_collection.insert_one(event)
                             except:
                                 pass
                             print(f"   🚨 FALL at {timestamp} (Confidence: {confidence:.2f})")
